@@ -57,7 +57,7 @@
   form{display:flex; flex-direction:column; gap:16px;}
   label{display:block; font-weight:600; font-size:14px; margin-bottom:6px;}
   .hint{font-weight:400; color:var(--ink-soft); font-size:12.5px;}
-  input[type=text], input[type=tel], input[type=date], textarea{
+  input[type=text], input[type=tel], input[type=email], input[type=date], textarea{
     width:100%; font:inherit; font-size:16px; color:var(--ink);
     padding:12px 14px; border:1px solid rgba(36,26,16,.25); border-radius:12px; background:var(--sheet);
   }
@@ -66,6 +66,8 @@
   .err-msg{color:var(--err); font-size:13px; margin-top:6px; display:none;}
   .field.invalid input, .field.invalid textarea{border-color:var(--err);}
   .field.invalid .err-msg{display:block;}
+  .contact-hint{margin:-4px 0 -6px; line-height:1.5;}
+  .contact-hint.invalid{color:var(--err); font-weight:600;}
 
   .choices{display:flex; flex-direction:column; gap:8px;}
   .choice{display:block; cursor:pointer;}
@@ -134,10 +136,18 @@
         <div class="err-msg">Vui lòng nhập tên.</div>
       </div>
 
+      <p class="hint contact-hint" id="contactHint">Điền ít nhất một: số điện thoại <b>hoặc</b> email, để shop liên hệ xác nhận đơn.</p>
+
       <div class="field" id="f-phone">
         <label for="phone">Số điện thoại <span class="hint">(Zalo nếu có)</span></label>
-        <input type="tel" id="phone" name="phone" autocomplete="tel" inputmode="tel" maxlength="16" required>
+        <input type="tel" id="phone" name="phone" autocomplete="tel" inputmode="tel" maxlength="16">
         <div class="err-msg">Số điện thoại chưa đúng (vd 0901234567).</div>
+      </div>
+
+      <div class="field" id="f-email">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" autocomplete="email" inputmode="email" maxlength="120">
+        <div class="err-msg">Email chưa đúng (vd ten@gmail.com).</div>
       </div>
 
       <div class="field">
@@ -149,7 +159,7 @@
           </label>
           <label class="choice">
             <input type="radio" name="delivery" value="other">
-            <span><b>Địa chỉ khác</b><small>Shop sẽ báo phí ship qua Zalo</small></span>
+            <span><b>Địa chỉ khác</b><small>Shop sẽ báo phí ship qua SĐT hoặc email bạn để lại</small></span>
           </label>
         </div>
       </div>
@@ -295,13 +305,19 @@
 
   function validate(){
     const v = id => $(id).value.trim();
+    const phone = v('phone').replace(/[\s.\-()]/g, ''), email = v('email');
+    const hasContact = phone !== '' || email !== '';
     const checks = [
       ['f-name', v('name') !== ''],
-      ['f-phone', /^(0|\+84)\d{9,10}$/.test(v('phone').replace(/[\s.\-()]/g, ''))],
+      ['f-phone', hasContact && (phone === '' || /^(0|\+84)\d{9,10}$/.test(phone))],
+      ['f-email', hasContact && (email === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))],
       ['f-address', !$('address').required || v('address') !== ''],
       ['f-date', v('date') !== '' && v('date') >= $('date').min],
     ];
     checks.forEach(([id, ok]) => $(id).classList.toggle('invalid', !ok));
+    // Neither filled: the shared hint explains it, so hide the per-field format messages.
+    $('contactHint').classList.toggle('invalid', !hasContact);
+    ['f-phone', 'f-email'].forEach(id => $(id).querySelector('.err-msg').style.visibility = hasContact ? '' : 'hidden');
     const firstBad = checks.find(([, ok]) => !ok);
     if (firstBad) $(firstBad[0]).querySelector('input,textarea').focus();
     return !firstBad;
@@ -315,6 +331,7 @@
     const payload = {
       name: $('name').value.trim(),
       phone: $('phone').value.trim(),
+      email: $('email').value.trim(),
       delivery: document.querySelector('input[name=delivery]:checked').value,
       address: $('address').value.trim(),
       date: $('date').value,
@@ -375,13 +392,13 @@
     $('payInfo').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
     $('payNote').textContent = res.freeShip
       ? 'Vui lòng chuyển khoản đúng nội dung để shop xác nhận đơn. Free ship tại Sonatus.'
-      : 'Số tiền trên là tiền bánh. Shop sẽ nhắn Zalo báo phí ship trước khi giao.';
+      : 'Số tiền trên là tiền bánh. Shop sẽ báo phí ship qua SĐT hoặc email bạn để lại trước khi giao.';
 
     if (c.ZALO_PHONE) {
       $('zaloBtn').href = `https://zalo.me/${c.ZALO_PHONE.replace(/\D/g, '')}`;
       $('zaloBtn').hidden = false;
     }
-    lastOrder = { orderId: res.orderId, phone: payload.phone };
+    lastOrder = { orderId: res.orderId, phone: payload.phone, email: payload.email };
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
