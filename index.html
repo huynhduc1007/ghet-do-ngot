@@ -200,6 +200,7 @@
 
     <div class="pay">
       <img id="qr" alt="Mã QR chuyển khoản" hidden>
+      <p class="note" id="qrNote" hidden>Mã QR này chưa kèm số tiền: khi chuyển, vui lòng nhập đúng <b>số tiền</b> và <b>nội dung CK</b> bên dưới.</p>
       <dl id="payInfo"></dl>
       <p class="note" id="payNote"></p>
     </div>
@@ -378,6 +379,7 @@
   function showDone(res, payload){
     $('orderView').hidden = true;
     $('bar').hidden = true;
+    $('contactMain').hidden = true;   // the confirmation screen has its own contact line
     $('done').style.display = 'block';
     $('doneCode').textContent = res.orderId;
 
@@ -385,6 +387,12 @@
     const rows = [['Số tiền', formatVnd(res.total)], ['Nội dung CK', res.orderId]];
     if (c.BANK_ID && c.ACCOUNT_NO) {
       const qs = new URLSearchParams({ amount: res.total, addInfo: res.orderId, accountName: c.ACCOUNT_NAME });
+      // If img.vietqr.io is blocked or down, fall back to the shop's own static QR.
+      $('qr').onerror = () => {
+        $('qr').onerror = null;
+        $('qr').src = 'image/qr-uob.jpg';
+        $('qrNote').hidden = false;
+      };
       $('qr').src = `https://img.vietqr.io/image/${encodeURIComponent(c.BANK_ID)}-${encodeURIComponent(c.ACCOUNT_NO)}-compact2.png?${qs}`;
       $('qr').hidden = false;
       rows.push(['Số tài khoản', c.ACCOUNT_NO], ['Chủ tài khoản', c.ACCOUNT_NAME]);
