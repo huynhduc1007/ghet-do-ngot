@@ -78,6 +78,10 @@
   .chip input:checked + span::before{content:"✓ ";}
   .chip input:focus-visible + span{outline:3px solid rgba(168,92,34,.35); outline-offset:1px;}
   .req{font-weight:600;}
+  .code-row{display:flex; gap:8px;}
+  .code-row input{flex:1; min-width:0; text-transform:uppercase;}
+  .code-row button{flex:none; padding:0 16px; border-radius:12px; border:1px solid var(--accent); background:var(--sheet); color:var(--accent-dark); font:inherit; font-weight:700; cursor:pointer;}
+  .code-row button:disabled{opacity:.5; cursor:default;}
   .sugg{font:inherit; color:var(--accent); background:none; border:none; padding:0; text-decoration:underline; cursor:pointer; font-weight:700;}
   .contact-hint{margin:-4px 0 -6px; line-height:1.5;}
   .contact-hint.invalid{color:var(--err); font-weight:600;}
@@ -172,11 +176,11 @@
         <div class="live" id="emailLive" aria-live="polite"></div>
       </div>
 
-      <div class="field">
+      <div class="field" id="f-delivery">
         <label>Giao đến</label>
         <div class="choices">
           <label class="choice">
-            <input type="radio" name="delivery" value="sonatus" checked>
+            <input type="radio" name="delivery" value="sonatus">
             <span><b>Tòa Sonatus</b><small>Free ship</small></span>
           </label>
           <label class="choice">
@@ -184,10 +188,11 @@
             <span><b>Địa chỉ khác</b><small>Shop sẽ báo phí ship qua cách liên hệ bạn chọn</small></span>
           </label>
         </div>
+        <div class="err-msg">Vui lòng chọn nơi giao bánh.</div>
       </div>
 
       <div class="field" id="f-address">
-        <label for="address" id="addressLabel">Tầng / công ty <span class="hint">(để giao tận tay)</span></label>
+        <label for="address" id="addressLabel">Địa chỉ giao hàng</label>
         <input type="text" id="address" name="address" autocomplete="street-address" maxlength="300">
         <div class="err-msg">Vui lòng nhập địa chỉ giao hàng.</div>
       </div>
@@ -201,6 +206,15 @@
       <div class="field">
         <label for="note">Ghi chú <span class="hint">(không bắt buộc)</span></label>
         <textarea id="note" name="note" maxlength="500" placeholder="Giờ nhận mong muốn, lời nhắn…"></textarea>
+      </div>
+
+      <div class="field" id="f-code">
+        <label for="code">Mã giảm giá <span class="hint">(nếu có)</span></label>
+        <div class="code-row">
+          <input type="text" id="code" name="code" maxlength="30" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-describedby="codeLive">
+          <button type="button" id="codeBtn">Áp dụng</button>
+        </div>
+        <div class="live" id="codeLive" aria-live="polite"></div>
       </div>
 
       <div class="hp" aria-hidden="true">
@@ -257,7 +271,7 @@
     ACCOUNT_NO: '3023306784',
     ACCOUNT_NAME: 'NGUYEN HUYNH DUC',
     ZALO_PHONE: '0765939739',
-    SEATALK: 'ducnguyenhuynh@shopee.com',
+    CONTACTS: [['Vy', '0832531560'], ['Đức', '0765939739']],
   };
 
   const MENU = [FEATURED, ...ITEMS].map(i => ({
@@ -303,13 +317,56 @@
   });
 
   function cartLines(){ return MENU.filter(i => cart[i.id] > 0).map(i => ({ ...i, qty: cart[i.id] })); }
-  function updateTotal(){
+  function renderTotal(){
     const lines = cartLines();
     const count = lines.reduce((s, l) => s + l.qty, 0);
-    $('totalText').textContent = formatVnd(lines.reduce((s, l) => s + l.qty * l.price, 0));
-    $('countText').textContent = count ? `${count} món · tiền bánh` : 'Chưa chọn món';
+    const subtotal = lines.reduce((s, l) => s + l.qty * l.price, 0);
+    const discount = applied ? Math.min(applied.discount, subtotal) : 0;
+    $('totalText').textContent = formatVnd(subtotal - discount);
+    $('countText').textContent = !count ? 'Chưa chọn món'
+      : discount ? `${count} món · đã giảm ${formatVnd(discount)}` : `${count} món · tiền bánh`;
     $('submitBtn').disabled = count === 0;
+    return count;
   }
+  function updateTotal(){
+    if (renderTotal() && applied) recheckCode();
+  }
+
+  // ---------- Discount code (checked by the server against the "Mã giảm giá" tab) ----------
+  let applied = null;   // { code, discount } once the server accepted the code
+  let recheckTimer = 0;
+
+  function codeMsg(cls, html){ $('codeLive').className = 'live' + (cls ? ' ' + cls : ''); $('codeLive').innerHTML = html; }
+
+  async function applyCode(quiet){
+    const code = $('code').value.trim().toUpperCase();
+    if (!code) { applied = null; codeMsg('', ''); renderTotal(); return; }
+    if (!cartLines().length) { codeMsg('bad', 'Chọn món trước rồi áp dụng mã.'); return; }
+    if (!ORDER_CONFIG.ENDPOINT) { codeMsg('bad', 'Bản xem thử chưa kiểm tra được mã.'); return; }
+    $('codeBtn').disabled = true;
+    if (!quiet) codeMsg('', 'Đang kiểm tra…');
+    try {
+      const res = await post({ action: 'checkCode', code, items: cartLines().map(l => ({ id: l.id, qty: l.qty })) });
+      if (code !== $('code').value.trim().toUpperCase()) return;   // typed something else meanwhile
+      if (res.ok) {
+        applied = { code: res.code, discount: res.discount };
+        codeMsg('ok', `✓ Mã <b>${res.code}</b>: giảm ${formatVnd(res.discount)}`);
+      } else {
+        applied = null;
+        codeMsg('bad', res.error || 'Mã không dùng được.');
+      }
+    } catch (err) {
+      codeMsg('bad', 'Chưa kiểm tra được mã, thử lại sau.');
+    } finally {
+      $('codeBtn').disabled = false;
+      renderTotal();
+    }
+  }
+  // The discount can depend on the cart (minimum order, percent), so re-check after cart changes.
+  function recheckCode(){ clearTimeout(recheckTimer); recheckTimer = setTimeout(() => applyCode(true), 600); }
+  $('codeBtn').addEventListener('click', () => applyCode(false));
+  $('code').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyCode(false); } });
+  $('code').addEventListener('input', () => { if (applied) { applied = null; renderTotal(); } codeMsg('', ''); });
 
   // Delivery date: tomorrow at the earliest (local time).
   const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -325,6 +382,7 @@
       : 'Tầng / công ty <span class="hint">(để giao tận tay)</span>';
     $('address').required = other;
     $('f-address').classList.remove('invalid');
+    $('f-delivery').classList.remove('invalid');
   }));
 
   // ---------- Live checks for phone / Shopee email ----------
@@ -410,6 +468,7 @@
       ['f-contact', w.size > 0],
       ['f-phone', (ph.s === 'ok' || (ph.s === 'empty' && !w.has('phone'))) && (seatalkOk || ph.s !== 'empty')],
       ['f-email', em.s === 'ok' || (em.s === 'empty' && !w.has('email'))],
+      ['f-delivery', !!document.querySelector('input[name=delivery]:checked')],
       ['f-address', !$('address').required || v('address') !== ''],
       ['f-date', v('date') !== '' && v('date') >= $('date').min],
     ];
@@ -431,6 +490,7 @@
       phone: phoneState($('phone').value).value || '',
       email: emailState($('email').value).value || '',
       contact: [...wants()],
+      code: $('code').value.trim().toUpperCase(),
       delivery: document.querySelector('input[name=delivery]:checked').value,
       address: $('address').value.trim(),
       date: $('date').value,
@@ -483,6 +543,7 @@
 
     const c = ORDER_CONFIG;
     const rows = [['Số tiền', formatVnd(res.total)], ['Nội dung CK', res.orderId]];
+    if (res.discount) rows.splice(1, 0, ['Đã giảm', `${formatVnd(res.discount)} (mã ${res.code})`]);
     if (c.BANK_ID && c.ACCOUNT_NO) {
       const qs = new URLSearchParams({ amount: res.total, addInfo: res.orderId, accountName: c.ACCOUNT_NAME });
       // If img.vietqr.io is blocked or down, fall back to the shop's own static QR.
@@ -529,11 +590,10 @@
   });
 
   // Shop contacts, shown under the form and on the confirmation screen.
-  const contacts = [];
-  if (ORDER_CONFIG.ZALO_PHONE) contacts.push(`Zalo: <a href="https://zalo.me/${ORDER_CONFIG.ZALO_PHONE.replace(/\D/g, '')}" target="_blank" rel="noopener">${ORDER_CONFIG.ZALO_PHONE}</a>`);
-  if (ORDER_CONFIG.SEATALK) contacts.push(`Seatalk: ${ORDER_CONFIG.SEATALK}`);
+  const contacts = (ORDER_CONFIG.CONTACTS || []).map(([who, tel]) =>
+    `${who} – <a href="https://zalo.me/${tel}" target="_blank" rel="noopener">${tel}</a>`);
   if (contacts.length) {
-    const html = 'Cần hỗ trợ? ' + contacts.join(' · ');
+    const html = 'Liên hệ: ' + contacts.join(' · ');
     $('contactMain').innerHTML = html;
     $('contactDone').innerHTML = html;
   }
