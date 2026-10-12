@@ -71,13 +71,14 @@
   .live.ok{color:var(--ok); font-weight:600;}
   .live.bad{color:var(--err); font-weight:600;}
   .live b{font-weight:700;}
-  .suffix-input{display:flex; align-items:stretch; border:1px solid rgba(36,26,16,.25); border-radius:12px; background:var(--sheet); overflow:hidden;}
-  .suffix-input input{border:none !important; border-radius:0; flex:1; min-width:0;}
-  .suffix-input input:focus{outline:none;}
-  .suffix-input:focus-within{outline:3px solid rgba(168,92,34,.35); outline-offset:1px;}
-  .suffix-input span{display:flex; align-items:center; padding:0 14px; background:var(--bg); color:var(--ink-soft); font-size:15px; border-left:1px solid var(--line); white-space:nowrap;}
-  .field.invalid .suffix-input{border-color:var(--err);}
-  .suffix-input.has-at span{display:none;}
+  .chips{display:flex; flex-wrap:wrap; gap:8px;}
+  .chip input{position:absolute; opacity:0; pointer-events:none;}
+  .chip span{display:inline-block; padding:9px 14px; border:1px solid rgba(36,26,16,.25); border-radius:999px; background:var(--sheet); font-size:14px; cursor:pointer;}
+  .chip input:checked + span{border-color:var(--accent); background:#FFF6EC; color:var(--accent-dark); font-weight:700;}
+  .chip input:checked + span::before{content:"✓ ";}
+  .chip input:focus-visible + span{outline:3px solid rgba(168,92,34,.35); outline-offset:1px;}
+  .req{font-weight:600;}
+  .sugg{font:inherit; color:var(--accent); background:none; border:none; padding:0; text-decoration:underline; cursor:pointer; font-weight:700;}
   .contact-hint{margin:-4px 0 -6px; line-height:1.5;}
   .contact-hint.invalid{color:var(--err); font-weight:600;}
 
@@ -148,20 +149,26 @@
         <div class="err-msg">Vui lòng nhập tên.</div>
       </div>
 
-      <p class="hint contact-hint" id="contactHint">Điền ít nhất một: số điện thoại <b>hoặc</b> email Shopee, để shop liên hệ xác nhận đơn.</p>
+      <div class="field" id="f-contact">
+        <label>Shop liên hệ bạn qua <span class="hint">(chọn một hoặc nhiều)</span></label>
+        <div class="chips">
+          <label class="chip"><input type="checkbox" name="contact" value="phone" checked><span>Điện thoại / Zalo</span></label>
+          <label class="chip"><input type="checkbox" name="contact" value="email"><span>Email</span></label>
+          <label class="chip"><input type="checkbox" name="contact" value="seatalk"><span>Seatalk</span></label>
+        </div>
+        <div class="err-msg">Chọn ít nhất một cách liên hệ.</div>
+      </div>
+      <p class="hint contact-hint" id="contactHint" hidden>Seatalk: shop tìm bạn bằng số điện thoại hoặc email bên dưới, điền ít nhất một.</p>
 
       <div class="field" id="f-phone">
-        <label for="phone">Số điện thoại <span class="hint">(Zalo nếu có)</span></label>
+        <label for="phone">Số điện thoại <span class="hint req" id="phoneReq"></span></label>
         <input type="tel" id="phone" name="phone" autocomplete="tel" inputmode="tel" maxlength="16" placeholder="0901 234 567" aria-describedby="phoneLive">
         <div class="live" id="phoneLive" aria-live="polite"></div>
       </div>
 
       <div class="field" id="f-email">
-        <label for="email">Email Shopee <span class="hint">(shop nhắn qua Seatalk)</span></label>
-        <div class="suffix-input">
-          <input type="text" id="email" name="email" inputmode="email" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="80" placeholder="ten.nguyen" aria-describedby="emailLive">
-          <span aria-hidden="true">@shopee.com</span>
-        </div>
+        <label for="email">Email <span class="hint req" id="emailReq"></span></label>
+        <input type="text" id="email" name="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" maxlength="120" placeholder="ten@gmail.com" aria-describedby="emailLive">
         <div class="live" id="emailLive" aria-live="polite"></div>
       </div>
 
@@ -174,7 +181,7 @@
           </label>
           <label class="choice">
             <input type="radio" name="delivery" value="other">
-            <span><b>Địa chỉ khác</b><small>Shop sẽ báo phí ship qua SĐT hoặc email bạn để lại</small></span>
+            <span><b>Địa chỉ khác</b><small>Shop sẽ báo phí ship qua cách liên hệ bạn chọn</small></span>
           </label>
         </div>
       </div>
@@ -321,12 +328,11 @@
   }));
 
   // ---------- Live checks for phone / Shopee email ----------
-  const EMAIL_DOMAIN = 'shopee.com';
 
   // s: 'empty' | 'typing' (not finished yet, not an error) | 'bad' | 'ok'
   function phoneState(raw){
     const d = raw.replace(/[\s.\-()]/g, '').replace(/^\+84/, '0');
-    if (!d) return { s: 'empty', msg: 'Ví dụ: 0901 234 567' };
+    if (!d) return { s: 'empty', msg: 'Ví dụ: 0901 234 567', short: 'Vui lòng nhập số điện thoại' };
     if (/\D/.test(d)) return { s: 'bad', msg: 'Chỉ nhập số' };
     if (d[0] !== '0') return { s: 'bad', msg: 'Số điện thoại bắt đầu bằng 0' };
     if (d.length >= 2 && !/^0[35789]/.test(d)) return { s: 'bad', msg: 'Đầu số chưa đúng (03, 05, 07, 08, 09)' };
@@ -335,56 +341,81 @@
     return { s: 'ok', msg: '✓ Số hợp lệ', value: d };
   }
 
+  const EMAIL_DOMAINS = ['gmail.com', 'shopee.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'icloud.com'];
+  const sugg = v => `<button type="button" class="sugg" data-v="${v}">${v}</button>`;
+
   function emailState(raw){
-    let name = raw.trim().toLowerCase();
-    if (!name) return { s: 'empty', msg: `Ví dụ: ten.nguyen@${EMAIL_DOMAIN}` };
-    if (name.includes('@')) {
-      const [n, dom] = name.split('@');
-      // Allow pasting the full address, or typing the domain as long as it is heading to shopee.com.
-      if (dom && !EMAIL_DOMAIN.startsWith(dom) && dom !== EMAIL_DOMAIN) return { s: 'bad', msg: `Chỉ nhận email @${EMAIL_DOMAIN}` };
-      name = n;
-    }
+    const v = raw.trim().toLowerCase();
+    if (!v) return { s: 'empty', msg: 'Ví dụ: ten@gmail.com', short: 'Vui lòng nhập email' };
+    if (/[^a-z0-9._%+\-@]/.test(v)) return { s: 'bad', msg: 'Email chỉ gồm chữ không dấu, số và . _ - +' };
+    if ((v.match(/@/g) || []).length > 1) return { s: 'bad', msg: 'Email chỉ có một dấu @' };
+    const at = v.indexOf('@');
+    // No @ yet: suggest the most common completion, updated on every keystroke.
+    if (at < 0) return { s: 'typing', msg: 'Gợi ý: ' + sugg(v + '@gmail.com'), short: 'Email còn thiếu @ (vd ten@gmail.com)' };
+    const name = v.slice(0, at), dom = v.slice(at + 1);
     if (!name) return { s: 'typing', msg: 'Nhập phần tên trước @', short: 'Thiếu phần tên email' };
-    if (!/^[a-z0-9._-]+$/.test(name)) return { s: 'bad', msg: 'Chỉ dùng chữ không dấu, số, dấu chấm, gạch nối' };
-    if (/^\.|\.\./.test(name)) return { s: 'bad', msg: 'Dấu chấm không đúng vị trí' };
-    if (name.endsWith('.')) return { s: 'typing', msg: 'Đang nhập…', short: 'Email không kết thúc bằng dấu chấm' };
-    return { s: 'ok', msg: `✓ Shop sẽ nhắn Seatalk: <b>${name}@${EMAIL_DOMAIN}</b>`, value: `${name}@${EMAIL_DOMAIN}` };
+    if (/^\.|\.\.|\.$/.test(name)) return { s: 'bad', msg: 'Dấu chấm không đúng vị trí' };
+    const match = EMAIL_DOMAINS.find(d => d.startsWith(dom));
+    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(dom)) {
+      return { s: 'typing', msg: match ? 'Gợi ý: ' + sugg(name + '@' + match) : 'Còn thiếu tên miền (vd gmail.com)',
+        short: 'Email chưa đủ (vd ten@gmail.com)' };
+    }
+    const typo = match && match !== dom ? ' · Có phải ' + sugg(name + '@' + match) + '?' : '';
+    return { s: 'ok', msg: `✓ Email hợp lệ: <b>${v}</b>${typo}`, value: v };
   }
 
   // Show the state under a field. "typing" only turns red once the field loses focus.
-  function showLive(fieldId, liveId, st, final){
-    const bad = st.s === 'bad' || (final && st.s === 'typing');
+  function showLive(fieldId, liveId, st, final, required){
+    const unfinished = st.s === 'typing' || (st.s === 'empty' && required);
+    const bad = st.s === 'bad' || (final && unfinished);
     $(liveId).className = 'live' + (st.s === 'ok' ? ' ok' : bad ? ' bad' : '');
-    $(liveId).innerHTML = bad && st.s === 'typing' ? st.short : st.msg;
+    $(liveId).innerHTML = bad && unfinished ? st.short : st.msg;
     $(fieldId).classList.toggle('invalid', bad);
   }
-  const checkPhone = final => showLive('f-phone', 'phoneLive', phoneState($('phone').value), final);
-  const checkEmail = final => showLive('f-email', 'emailLive', emailState($('email').value), final);
+  const wants = () => new Set([...document.querySelectorAll('input[name=contact]:checked')].map(c => c.value));
+  const checkPhone = final => showLive('f-phone', 'phoneLive', phoneState($('phone').value), final, wants().has('phone'));
+  const checkEmail = final => showLive('f-email', 'emailLive', emailState($('email').value), final, wants().has('email'));
+
+  // Mark which fields the chosen contact methods make required.
+  function syncContact(){
+    const w = wants();
+    $('phoneReq').textContent = w.has('phone') ? '(bắt buộc)' : '(không bắt buộc)';
+    $('emailReq').textContent = w.has('email') ? '(bắt buộc)' : '(không bắt buộc)';
+    $('contactHint').hidden = !(w.has('seatalk') && !w.has('phone') && !w.has('email'));
+    $('contactHint').classList.remove('invalid');
+    if (w.size) $('f-contact').classList.remove('invalid');
+    checkPhone(false); checkEmail(false);
+  }
+  document.querySelectorAll('input[name=contact]').forEach(c => c.addEventListener('change', syncContact));
   $('phone').addEventListener('input', () => { checkPhone(false); $('contactHint').classList.remove('invalid'); });
   $('phone').addEventListener('blur', () => checkPhone(true));
-  $('email').addEventListener('input', () => {
-    checkEmail(false);
-    $('contactHint').classList.remove('invalid');
-    // Pasted a full address: hide the fixed "@shopee.com" so it is not shown twice.
-    $('email').parentElement.classList.toggle('has-at', $('email').value.includes('@'));
-  });
+  $('email').addEventListener('input', () => { checkEmail(false); $('contactHint').classList.remove('invalid'); });
   $('email').addEventListener('blur', () => checkEmail(true));
-  checkPhone(false); checkEmail(false);
+  $('emailLive').addEventListener('click', e => {
+    if (!e.target.matches('.sugg')) return;
+    $('email').value = e.target.dataset.v;
+    checkEmail(true);
+  });
+  syncContact();
 
   function validate(){
     const v = id => $(id).value.trim();
+    const w = wants();
     const ph = phoneState($('phone').value), em = emailState($('email').value);
-    const hasContact = ph.s !== 'empty' || em.s !== 'empty';
+    // Seatalk: the shop finds the customer by phone or email, so one of them is needed.
+    const seatalkOk = !w.has('seatalk') || ph.s === 'ok' || em.s === 'ok';
     checkPhone(true); checkEmail(true);
     const checks = [
       ['f-name', v('name') !== ''],
-      ['f-phone', hasContact && (ph.s === 'empty' || ph.s === 'ok')],
-      ['f-email', hasContact && (em.s === 'empty' || em.s === 'ok')],
+      ['f-contact', w.size > 0],
+      ['f-phone', (ph.s === 'ok' || (ph.s === 'empty' && !w.has('phone'))) && (seatalkOk || ph.s !== 'empty')],
+      ['f-email', em.s === 'ok' || (em.s === 'empty' && !w.has('email'))],
       ['f-address', !$('address').required || v('address') !== ''],
       ['f-date', v('date') !== '' && v('date') >= $('date').min],
     ];
     checks.forEach(([id, ok]) => $(id).classList.toggle('invalid', !ok));
-    $('contactHint').classList.toggle('invalid', !hasContact);
+    $('contactHint').classList.toggle('invalid', !seatalkOk);
+    if (!seatalkOk) $('contactHint').hidden = false;
     const firstBad = checks.find(([, ok]) => !ok);
     if (firstBad) $(firstBad[0]).querySelector('input,textarea').focus();
     return !firstBad;
@@ -399,6 +430,7 @@
       name: $('name').value.trim(),
       phone: phoneState($('phone').value).value || '',
       email: emailState($('email').value).value || '',
+      contact: [...wants()],
       delivery: document.querySelector('input[name=delivery]:checked').value,
       address: $('address').value.trim(),
       date: $('date').value,
@@ -466,7 +498,7 @@
     $('payInfo').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
     $('payNote').textContent = res.freeShip
       ? 'Vui lòng chuyển khoản đúng nội dung để shop xác nhận đơn. Free ship tại Sonatus.'
-      : 'Số tiền trên là tiền bánh. Shop sẽ báo phí ship qua SĐT hoặc email bạn để lại trước khi giao.';
+      : 'Số tiền trên là tiền bánh. Shop sẽ báo phí ship qua cách liên hệ bạn chọn trước khi giao.';
 
     if (c.ZALO_PHONE) {
       $('zaloBtn').href = `https://zalo.me/${c.ZALO_PHONE.replace(/\D/g, '')}`;
