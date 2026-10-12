@@ -19,14 +19,15 @@ const ITEMS = [
   },
   {
     id:"banana",
-    name:"Banana Oat Bread",
-    nameVn:"Bánh Chuối Yến Mạch",
+    name:"Banana Oat Choco Chip Bread",
+    nameVn:"Bánh Chuối Yến Mạch Choco Chip",
+    orderHint:"Muốn đổi choco chip sang hạt? Ghi vào ô Ghi chú.",
     price:25000,
     unit:"piece",
     weight:"150g",
     img:"image/Banana_oat_bread-removebg-preview-cropped.png",
     group:"bakes", badge:"Best seller",
-    desc:"Ripe banana, rolled oats and dark chocolate chips, baked into a moist tea loaf.",
+    desc:"Ripe banana, rolled oats and dark chocolate chips, baked into a moist tea loaf. Nuts instead of chips on request.",
   },
   {
     id:"brownie",
