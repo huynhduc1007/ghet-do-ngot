@@ -350,7 +350,7 @@
       if (code !== $('code').value.trim().toUpperCase()) return;   // typed something else meanwhile
       if (res.ok) {
         applied = { code: res.code, discount: res.discount };
-        codeMsg('ok', `✓ Mã <b>${res.code}</b>: giảm ${formatVnd(res.discount)}`);
+        codeMsg('ok', `✓ Mã <b>${res.code}</b>: giảm ${formatVnd(res.discount)}${res.scope ? ' (cho ' + res.scope + ')' : ''}`);
       } else {
         applied = null;
         codeMsg('bad', res.error || 'Mã không dùng được.');
