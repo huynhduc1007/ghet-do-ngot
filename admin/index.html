@@ -89,7 +89,7 @@
   .stock input{width:96px;text-align:right}
   .kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
   .kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px;text-align:center}
-  .kpi small{display:block;font-size:11.5px;color:var(--soft)}.kpi b{font-size:17px}
+  .kpi small{display:block;font-size:11.5px;color:var(--soft)}.kpi b+small{margin-top:2px;font-size:11px}.kpi b{font-size:17px}
   table{width:100%;border-collapse:collapse;font-size:13px;background:#fff;border-radius:12px;overflow:hidden}
   th{background:var(--ac);color:#fff;padding:8px 6px;text-align:left;font-weight:700}
   td{padding:8px 6px;border-bottom:1px solid var(--line)}
@@ -609,23 +609,52 @@ async function renderRecipes(force){
 }
 
 // ---------------- Lãi ----------------
-async function renderProfit(){
-  loading();
-  let d; try { d = await api('admin.profit'); } catch (e) { return fail(e); }
-  const kv = (arr, label) => (arr.find(x => x.label.indexOf(label) === 0) || {}).value || '—';
+let PROFIT = null, perMode = store.get('gdn.period', 'months');
+async function renderProfit(force){
+  if (!PROFIT || force) { loading(); try { PROFIT = await api('admin.profit'); } catch (e) { return fail(e); } }
+  const d = PROFIT;
+  const kv = (arr, label) => ((arr || []).find(x => x.label.indexOf(label) === 0) || {}).value || '—';
+  const neg = v => /^[−-]/.test(String(v).trim());
   const low = p => parseFloat(String(p.margin).replace('%', '')) < 60;
+  const kpi = (label, value, color, sub) => '<div class="kpi"><small>' + esc(label) + '</small><b' + (color ? ' style="color:' + color + '"' : '') + '>' +
+    esc(value) + '</b>' + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</div>';
+  const per = (d[perMode] || []).filter(p => p.orders !== '');
+  const owe = kv(d.money, 'Khách còn nợ'), refund = kv(d.money, 'Phải hoàn'), net = kv(d.money, 'Tiền mặt');
   $('main').innerHTML =
-    '<div class="kpis">' + [['Doanh thu (đơn web)', 'Doanh thu'], ['Lãi gộp', 'Lãi gộp'], ['Biên lãi gộp', 'Biên lãi'], ['Đã chi mua hàng', 'Đã chi']].map(k =>
-      '<div class="kpi"><small>' + k[1] + '</small><b' + (k[1] === 'Lãi gộp' ? ' style="color:var(--ok)"' : '') + '>' + esc(kv(d.totals, k[0])) + '</b></div>').join('') + '</div>' +
+    '<div class="kpis">' + kpi('Doanh thu', kv(d.totals, 'Doanh thu')) + kpi('Lãi gộp', kv(d.totals, 'Lãi gộp'), 'var(--ok)') +
+      kpi('Biên lãi gộp', kv(d.totals, 'Biên lãi')) + kpi('Đã chi mua hàng', kv(d.totals, 'Đã chi')) + '</div>' +
     '<div class="box"><div class="h">Hòa vốn</div>' +
-      '<div class="sumrow"><span>① Hòa vốn thật</span><b style="color:' + (kv(d.real, 'Cần thêm').indexOf('✓') === 0 ? 'var(--ok)' : 'var(--acd)') + '">' + esc(kv(d.real, 'Cần thêm')) + '</b></div>' +
-      '<div class="meta">Lãi gộp ' + esc(kv(d.real, 'Lãi gộp')) + ' / chi phí ngoài bánh ' + esc(kv(d.real, 'Chi phí')) + '</div>' +
-      '<div class="sumrow" style="margin-top:8px"><span>② Thu hồi tiền mặt</span><b>' + esc(kv(d.cash, 'Cần thêm')) + '</b></div>' +
-      '<div class="meta">Đã thu ' + esc(kv(d.cash, 'Doanh thu')) + ' / đã bỏ ra ' + esc(kv(d.cash, 'Tổng tiền')) + ' · hàng trong kho ~' + esc(kv(d.cash, 'Hàng còn')) + '</div></div>' +
+      '<div class="sumrow"><span>① Có lãi chưa?</span><b style="color:' + (kv(d.real, 'Cần thêm').indexOf('✓') === 0 ? 'var(--ok)' : 'var(--acd)') + '">' + esc(kv(d.real, 'Cần thêm')) + '</b></div>' +
+      '<div class="meta">Lãi gộp ' + esc(kv(d.real, 'Lãi gộp')) + ' so với chi phí ngoài bánh (dụng cụ, điện, gas…) ' + esc(kv(d.real, 'Chi phí')) + '.</div>' +
+      '<div class="sumrow" style="margin-top:8px"><span>② Thu hồi đủ vốn chưa?</span><b>' + esc(kv(d.cash, 'Cần thêm')) + '</b></div>' +
+      '<div class="meta">Đã thu ' + esc(kv(d.cash, 'Doanh thu')) + ' / đã bỏ ra ' + esc(kv(d.cash, 'Tổng tiền')) + '. Khoảng ' + esc(kv(d.cash, 'Hàng còn')) + ' vẫn nằm trong nguyên liệu chưa dùng.</div></div>' +
+    (d.money && d.money.length ?
+      '<div class="h" style="margin-top:14px">Tiền thật</div><div class="kpis">' +
+        kpi('Đã thu thật', kv(d.money, 'Đã thu'), 'var(--ok)', 'tiền đã vào tài khoản') +
+        kpi('Khách còn nợ', owe, owe !== '0' ? 'var(--acd)' : '', kv(d.money, 'Số đơn còn nợ') + ' đơn') +
+        kpi('Tiền mặt ròng', net, neg(net) ? 'var(--warn)' : 'var(--ok)', 'đã thu − đã chi') +
+        kpi('Phải hoàn khách', refund, refund !== '0' ? 'var(--warn)' : '') + '</div>' +
+      '<div class="h">Đơn & khách</div><div class="kpis">' +
+        kpi('Số đơn', kv(d.customers, 'Số đơn')) + kpi('Bánh / túi đã bán', kv(d.customers, 'Số bánh')) +
+        kpi('Đơn trung bình', kv(d.customers, 'Đơn trung bình')) + kpi('Đơn nhân viên Shopee', kv(d.customers, 'Đơn của')) +
+        kpi('Số khách', kv(d.customers, 'Số khách')) + kpi('Khách quay lại', kv(d.customers, 'Khách quay lại'), '', 'từ 2 đơn trở lên') + '</div>' +
+      '<div class="h">Giảm giá & ship</div><div class="kpis">' +
+        kpi('Đã giảm', kv(d.promo, 'Đã giảm'), '', kv(d.promo, '% giảm') + ' tiền bánh') +
+        kpi('Đơn dùng mã', kv(d.promo, 'Đơn dùng mã'), '', 'TB ' + kv(d.promo, 'Giảm TB') + ' / đơn') +
+        kpi('Tiền bánh trước giảm', kv(d.promo, 'Tiền bánh')) + kpi('Phí ship đã tính', kv(d.promo, 'Phí ship')) + '</div>' +
+      '<div class="row" style="margin:14px 0 8px"><div class="h" style="margin:0">Xu hướng</div><div class="chips" style="margin:0">' +
+        [['months', 'Tháng'], ['weeks', 'Tuần']].map(c => '<button class="chip' + (perMode === c[0] ? ' on' : '') + '" data-pm="' + c[0] + '">' + c[1] + '</button>').join('') + '</div></div>' +
+      (per.length && per[0].label.indexOf('Chưa') !== 0 ?
+        '<table><tr><th>' + (perMode === 'weeks' ? 'Tuần từ' : 'Tháng') + '</th><th>Đơn</th><th>Doanh thu</th><th>Lãi gộp</th><th>Đã thu</th></tr>' +
+        per.map(p => '<tr><td><b>' + esc(p.label) + '</b></td><td>' + esc(p.orders) + '</td><td>' + esc(p.revenue) + '</td><td>' + esc(p.profit) +
+          '<br><span class="meta">' + esc(p.margin) + '</span></td><td>' + esc(p.received) + '</td></tr>').join('') + '</table>'
+        : '<div class="empty">Chưa có đơn.</div>')
+      : '<div class="msg bad">Chưa có mục Tài chính trên tab Giá vốn.</div>') +
     '<div class="h" style="margin-top:14px">Từng bánh</div>' +
     '<table><tr><th>Bánh</th><th>Biên</th><th>Bán</th><th>Lãi</th></tr>' +
     d.products.map(p => '<tr' + (low(p) ? ' style="color:var(--warn)"' : '') + '><td>' + esc(p.name) + '<br><span class="meta">vốn ' + esc(p.cost) + ' · bán ' + esc(p.price) + '</span></td><td>' + esc(p.margin) + '</td><td>' + esc(p.sold) + '</td><td>' + esc(p.earned) + '</td></tr>').join('') +
-    '</table><p class="meta" style="margin-top:10px">Số liệu lấy từ tab Giá vốn trên Sheet.</p>';
+    '</table><p class="meta" style="margin-top:10px">Số liệu lấy từ tab Giá vốn trên Sheet. Bấm ↻ để tải lại.</p>';
+  $('main').querySelectorAll('[data-pm]').forEach(b => b.onclick = () => { perMode = b.dataset.pm; store.set('gdn.period', perMode); renderProfit(); });
 }
 
 // ---------------- card drawing (same as the Sheet's "Xác nhận đơn") ----------------
