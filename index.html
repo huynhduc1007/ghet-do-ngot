@@ -48,7 +48,27 @@
   .item{display:flex; align-items:center; gap:12px; background:var(--sheet); border:1px solid var(--line); border-radius:14px; padding:10px 12px;}
   .item.featured{border-color:rgba(168,92,34,.35); background:#FFFDF8;}
   .item.in-cart{border-color:var(--accent);}
-  .item img{width:68px; height:68px; object-fit:contain; flex:0 0 68px; align-self:flex-start;}
+  .item img{width:68px; height:68px; object-fit:contain; display:block;}
+  .zoom-btn{flex:0 0 68px; align-self:flex-start; padding:0; border:none; background:none; cursor:zoom-in; border-radius:10px; position:relative;}
+  .zoom-btn::after{content:"⤢"; position:absolute; right:-2px; bottom:-2px; width:20px; height:20px; border-radius:50%;
+    background:rgba(255,255,255,.92); color:var(--accent-dark); font-size:12px; line-height:20px; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,.15);}
+  .zoom-btn:focus-visible{outline:3px solid rgba(168,92,34,.35); outline-offset:2px;}
+  .inote, .cnote{margin-top:8px;}
+  .cnote{flex:0 0 100%;}
+  .item-note{width:100%; font:inherit; font-size:14px; padding:9px 12px; border:1px dashed rgba(168,92,34,.5); border-radius:10px; background:#FFFDF8; color:var(--ink);}
+  .item-note:focus{outline:3px solid rgba(168,92,34,.25); border-style:solid;}
+
+  /* ---------- Photo viewer ---------- */
+  .viewer{position:fixed; inset:0; z-index:50; background:rgba(36,26,16,.78); display:flex; align-items:center; justify-content:center; padding:16px;}
+  .viewer figure{margin:0; background:var(--sheet); border-radius:18px; max-width:440px; width:100%; max-height:92vh; overflow:auto; position:relative;}
+  .viewer img{display:block; width:100%; max-height:62vh; object-fit:contain; background:var(--bg); border-radius:18px 18px 0 0;}
+  .viewer figcaption{padding:14px 18px 18px;}
+  .viewer .vn{font-weight:700; font-size:17px;}
+  .viewer .en{color:var(--ink-soft); font-size:13px; margin-top:2px;}
+  .viewer .meta{color:var(--accent-dark); font-weight:700; font-size:14px; margin-top:8px;}
+  .viewer .desc{font-size:13.5px; line-height:1.55; color:var(--ink-soft); margin-top:6px;}
+  .viewer .close{position:absolute; top:10px; right:10px; width:40px; height:40px; border-radius:50%; border:none;
+    background:rgba(255,255,255,.95); font-size:22px; line-height:1; cursor:pointer; box-shadow:0 1px 4px rgba(0,0,0,.2);}
   .item .info{flex:1; min-width:0;}
   .item .nm{font-weight:700; font-size:15px; line-height:1.3;}
   .item .hint-item{font-size:12.5px; color:var(--accent); margin-top:2px; line-height:1.35;}
@@ -67,7 +87,7 @@
 
   /* ---------- Cart ---------- */
   .box{background:var(--sheet); border:1px solid var(--line); border-radius:14px; padding:14px;}
-  .cart-line{display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line);}
+  .cart-line{display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line);}
   .cart-line:first-child{padding-top:0;}
   .cart-line:last-child{border-bottom:none; padding-bottom:0;}
   .cart-line .info{flex:1; min-width:0;}
@@ -302,6 +322,19 @@
   </div>
 </div>
 
+<div class="viewer" id="viewer" hidden role="dialog" aria-modal="true" aria-labelledby="vName">
+  <figure>
+    <button type="button" class="close" id="vClose" aria-label="Đóng">×</button>
+    <img id="vImg" alt="">
+    <figcaption>
+      <div class="vn" id="vName"></div>
+      <div class="en" id="vEn"></div>
+      <div class="meta" id="vMeta"></div>
+      <div class="desc" id="vDesc"></div>
+    </figcaption>
+  </figure>
+</div>
+
 <script src="items.js"></script>
 <script>
   // ---------------------------------------------------------------------
@@ -342,9 +375,11 @@
 
   const MENU = [FEATURED, ...ITEMS].map(i => ({
     id: i.id, name: i.name, nameVn: i.nameVn, price: i.price, img: i.img, hint: i.orderHint,
-    unit: i.unit || 'bag of 10', isNew: i === FEATURED,
+    unit: i.unit || 'bag of 10', isNew: i === FEATURED, desc: i.desc, weight: i.weight || i.meta,
+    notePh: i.notePlaceholder,   // items that take a per-item note (e.g. banana: chips → nuts)
   }));
   const cart = Object.fromEntries(MENU.map(i => [i.id, 0]));
+  const notes = {};   // per-item note, typed under the item in the menu or the cart
   const MAX_QTY = 50;
   const $ = id => document.getElementById(id);
   const radio = name => (document.querySelector(`input[name=${name}]:checked`) || {}).value || '';
@@ -364,9 +399,13 @@
     </div>`;
   }
 
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const noteInput = i => `<input type="text" class="item-note" data-note="${i.id}" maxlength="200"
+      value="${esc(notes[i.id])}" placeholder="${esc(i.notePh)}" aria-label="Ghi chú cho ${esc(i.nameVn)}">`;
+
   $('items').innerHTML = MENU.map(i => `
     <div class="item${i.isNew ? ' featured' : ''}" id="item-${i.id}">
-      <img src="${i.img}" alt="">
+      <button type="button" class="zoom-btn" data-zoom="${i.id}" aria-label="Xem ảnh lớn ${i.nameVn}"><img src="${i.img}" alt=""></button>
       <div class="info">
         <div class="nm">${i.nameVn}${i.isNew ? '<span class="tag">Mới</span>' : ''}</div>
         <div class="sub">${i.name}</div>
@@ -375,8 +414,17 @@
           <div class="pr">${formatVnd(i.price)} <span class="sub">/ ${unitVn(i.unit)}</span></div>
           <div class="ctl">${control(i)}</div>
         </div>
+        ${i.notePh ? `<div class="inote" hidden>${noteInput(i)}</div>` : ''}
       </div>
     </div>`).join('');
+
+  // Per-item notes: the same note shows under the item in the menu and in the cart.
+  document.addEventListener('input', e => {
+    if (!e.target.matches('.item-note')) return;
+    const id = e.target.dataset.note;
+    notes[id] = e.target.value;
+    document.querySelectorAll(`.item-note[data-note="${id}"]`).forEach(x => { if (x !== e.target) x.value = e.target.value; });
+  });
 
   // One handler for "+ Thêm" and the steppers, in both the menu and the cart.
   function onQtyClick(e){
@@ -398,8 +446,11 @@
     const card = $('item-' + id);
     card.querySelector('.ctl').innerHTML = control(i);
     card.classList.toggle('in-cart', cart[id] > 0);
+    const noteBox = card.querySelector('.inote');
+    if (noteBox) noteBox.hidden = !cart[id];
+    if (!cart[id]) delete notes[id];
     renderCart();
-    if (applied) recheckCode();
+    recheckCode();
   }
 
   function cartLines(){ return MENU.filter(i => cart[i.id] > 0).map(i => ({ ...i, qty: cart[i.id] })); }
@@ -413,7 +464,7 @@
 
   function sumRows(t, place){
     const rows = [['Tiền bánh', formatVnd(t.subtotal)]];
-    if (t.discount) rows.push([`Mã ${applied.code}`, '−' + formatVnd(t.discount)]);
+    if (t.discount) rows.push([`${applied.auto ? 'Ưu đãi' : 'Mã'} ${applied.code}`, '−' + formatVnd(t.discount)]);
     if (place) rows.push(['Phí ship', PLACES[place].free ? 'Free' : 'Shop báo sau']);
     rows.push([place && !PLACES[place].free ? 'Chuyển khoản trước (chưa gồm ship)' : 'Cần chuyển khoản', formatVnd(t.total)]);
     return rows.map(([k, v], n) => {
@@ -429,6 +480,7 @@
         <div class="info"><div class="nm">${l.nameVn}</div><div class="sub">${formatVnd(l.price)} / ${unitVn(l.unit)}</div></div>
         ${control(l)}
         <div class="lt">${formatVnd(l.qty * l.price)}</div>
+        ${l.notePh ? `<div class="cnote">${noteInput(l)}</div>` : ''}
       </div>`).join('')
       : '<div class="empty">Giỏ hàng đang trống.<br><button type="button" class="back" data-go="menu">← Quay lại menu</button></div>';
     $('cartSum').innerHTML = sumRows(t);
@@ -472,21 +524,24 @@
   });
 
   // ---------- Discount code (checked by the server against the "Mã giảm giá" tab) ----------
-  let applied = null;   // { code, discount } once the server accepted the code
+  // applied = { code, discount, auto } once the server accepted it. auto = a "Tự áp dụng" promo the
+  // customer did not type; a typed code always replaces it.
+  let applied = null;
   let recheckTimer = 0;
 
   function codeMsg(cls, html){ $('codeLive').className = 'live' + (cls ? ' ' + cls : ''); $('codeLive').innerHTML = html; }
+  const typedCode = () => $('code').value.trim().toUpperCase();
 
   async function applyCode(quiet){
-    const code = $('code').value.trim().toUpperCase();
-    if (!code) { applied = null; codeMsg('', ''); renderCart(); return; }
+    const code = typedCode();
+    if (!code) { applied = null; codeMsg('', ''); renderCart(); checkAuto(); return; }
     if (!cartLines().length) { codeMsg('bad', 'Chọn món trước rồi áp dụng mã.'); return; }
     if (!ORDER_CONFIG.ENDPOINT) { codeMsg('bad', 'Bản xem thử chưa kiểm tra được mã.'); return; }
     $('codeBtn').disabled = true;
     if (!quiet) codeMsg('', 'Đang kiểm tra…');
     try {
       const res = await post({ action: 'checkCode', code, items: cartLines().map(l => ({ id: l.id, qty: l.qty })) });
-      if (code !== $('code').value.trim().toUpperCase()) return;   // typed something else meanwhile
+      if (code !== typedCode()) return;   // typed something else meanwhile
       if (res.ok) {
         applied = { code: res.code, discount: res.discount };
         codeMsg('ok', `✓ Mã <b>${res.code}</b>: giảm ${formatVnd(res.discount)}${res.scope ? ' (cho ' + res.scope + ')' : ''}`);
@@ -501,11 +556,40 @@
       renderCart();
     }
   }
+
+  // No code typed: ask the server whether a "Tự áp dụng" promo fits this cart.
+  async function checkAuto(){
+    if (typedCode() || !cartLines().length || !ORDER_CONFIG.ENDPOINT) {
+      if (applied && applied.auto) { applied = null; codeMsg('', ''); renderCart(); }
+      return;
+    }
+    try {
+      const res = await post({ action: 'autoPromo', items: cartLines().map(l => ({ id: l.id, qty: l.qty })) });
+      if (typedCode()) return;
+      if (res.ok && res.code && res.discount > 0) {
+        applied = { code: res.code, discount: res.discount, auto: true };
+        codeMsg('ok', `✓ Ưu đãi tự động <b>${res.code}</b>: giảm ${formatVnd(res.discount)}${res.scope ? ' (cho ' + res.scope + ')' : ''}`);
+      } else if (applied && applied.auto) { applied = null; codeMsg('', ''); }
+    } catch (err) { /* the order still goes through; the server applies the promo itself */ }
+    renderCart();
+  }
+
   // The discount can depend on the cart (minimum order, percent), so re-check after cart changes.
-  function recheckCode(){ clearTimeout(recheckTimer); recheckTimer = setTimeout(() => applyCode(true), 600); }
+  function recheckCode(){
+    clearTimeout(recheckTimer);
+    recheckTimer = setTimeout(() => (typedCode() ? applyCode(true) : checkAuto()), 600);
+  }
   $('codeBtn').addEventListener('click', () => applyCode(false));
   $('code').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyCode(false); } });
-  $('code').addEventListener('input', () => { if (applied) { applied = null; renderCart(); } codeMsg('', ''); });
+  $('code').addEventListener('input', () => {
+    if (applied) { applied = null; renderCart(); }
+    codeMsg('', '');
+    if (!typedCode()) recheckCode();
+  });
+  // Customers often type a code and never press "Áp dụng": check it as soon as they leave the box.
+  $('code').addEventListener('blur', () => {
+    if (typedCode() && !(applied && !applied.auto && applied.code === typedCode())) applyCode(false);
+  });
 
   // ---------- Who: Shopee staff give their Seatalk email, others a phone number ----------
   document.querySelectorAll('input[name=who]').forEach(r => r.addEventListener('change', () => {
@@ -683,6 +767,17 @@
   async function submitOrder(){
     $('formError').style.display = 'none';
     if (!cartLines().length || !validate()) return;
+    // A code typed but never checked (no "Áp dụng" press): check it now rather than drop it.
+    if (typedCode() && !(applied && !applied.auto && applied.code === typedCode())) {
+      await applyCode(true);
+      if (!(applied && !applied.auto)) {
+        $('formError').textContent = `Mã giảm giá "${typedCode()}" chưa dùng được: ` +
+          `${($('codeLive').textContent || 'kiểm tra lại mã').replace(/\.$/, '')}. Sửa hoặc xóa mã ở bước Giỏ hàng rồi đặt lại.`;
+        $('formError').style.display = 'block';
+        $('formError').scrollIntoView({ block: 'center' });
+        return;
+      }
+    }
     const who = radio('who');
     const phone = phoneState($('phone').value).value || '';
     const payload = {
@@ -691,13 +786,13 @@
       phone,
       email: who === 'shopee' ? emailState($('email').value).value || '' : '',
       contact: who === 'shopee' ? ['seatalk', ...(phone ? ['phone'] : [])] : ['phone'],
-      code: applied ? applied.code : '',
+      code: applied && !applied.auto ? applied.code : '',   // auto promos are re-applied by the server
       delivery: radio('delivery'),
       address: $('f-address').hidden ? '' : $('address').value.trim(),
       date: pickedDate,
       note: $('note').value.trim(),
       website: $('website').value,
-      items: cartLines().map(l => ({ id: l.id, qty: l.qty })),
+      items: cartLines().map(l => ({ id: l.id, qty: l.qty, note: (notes[l.id] || '').trim() })),
     };
 
     $('nextBtn').disabled = true;
@@ -800,6 +895,28 @@
   }
 
   $('againBtn').addEventListener('click', () => location.reload());
+  // ---------- Photo viewer: tap a cake photo to see it large ----------
+  let zoomFrom = null;
+  function openViewer(id, from){
+    const i = MENU.find(m => m.id === id);
+    $('vImg').src = i.img;
+    $('vName').textContent = i.nameVn;
+    $('vEn').textContent = i.name;
+    $('vMeta').textContent = formatVnd(i.price) + ' / ' + unitVn(i.unit) + (i.weight ? ' · ' + i.weight : '');
+    $('vDesc').textContent = i.desc || '';
+    $('viewer').hidden = false;
+    zoomFrom = from;
+    $('vClose').focus();
+  }
+  function closeViewer(){
+    $('viewer').hidden = true;
+    if (zoomFrom) zoomFrom.focus();
+  }
+  $('items').addEventListener('click', e => { const b = e.target.closest('[data-zoom]'); if (b) openViewer(b.dataset.zoom, b); });
+  $('vClose').addEventListener('click', closeViewer);
+  $('viewer').addEventListener('click', e => { if (e.target === $('viewer')) closeViewer(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('viewer').hidden) closeViewer(); });
+
   go('menu', false);
 </script>
 </body>
