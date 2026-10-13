@@ -149,6 +149,11 @@
     <div class="brand" id="dTitle" style="font-size:18px"></div><div class="sub" id="dSub"></div></div></header>
   <main id="dBody"></main>
 </div>
+<div class="overlay" id="ingView" hidden>
+  <header class="top"><div class="t"><button class="back" data-close="ingView">‹ Kho</button>
+    <div class="brand" id="iTitle" style="font-size:18px"></div><div class="sub" id="iSub"></div></div></header>
+  <main id="iBody"></main>
+</div>
 <div class="overlay" id="cardView" hidden>
   <header class="top"><div class="t"><button class="back" data-close="cardView">‹ Quay lại</button>
     <div class="sub" style="margin-top:4px">Phiếu xác nhận</div></div></header>
@@ -248,7 +253,7 @@ $('menuBtn').addEventListener('click', () => {
 document.addEventListener('click', e => { const c = e.target.closest('[data-close]'); if (c) closeLayer(c.dataset.close); });
 function openLayer(id){ $(id).hidden = false; history.pushState({ layer: id }, ''); }
 function closeLayer(id){ if (!$(id).hidden) { $(id).hidden = true; if (history.state && history.state.layer === id) history.back(); } }
-window.addEventListener('popstate', () => { ['cardView', 'detail'].forEach(id => { if (!$(id).hidden && !(history.state && history.state.layer === id)) $(id).hidden = true; }); });
+window.addEventListener('popstate', () => { ['cardView', 'detail', 'ingView'].forEach(id => { if (!$(id).hidden && !(history.state && history.state.layer === id)) $(id).hidden = true; }); });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && session && view === 'orders' && $('detail').hidden) loadOrders(true); });
 const loading = () => { $('main').innerHTML = '<div class="empty"><span class="spin"></span> Đang tải…</div>'; };
 const fail = e => { $('main').innerHTML = '<div class="msg bad">' + esc(e.message) + '</div>'; };
@@ -434,9 +439,9 @@ async function openCard(id){
 }
 
 // ---------------- Kho ----------------
-let STOCK = null, stockFilter = 'attn', stockQ = '';
+let STOCK = null, STOCK_META = { groups: [], units: [] }, stockFilter = 'attn', stockQ = '';
 async function renderStock(force){
-  if (!STOCK || force) { loading(); try { STOCK = (await api('admin.stock')).items; } catch (e) { return fail(e); } }
+  if (!STOCK || force) { loading(); try { const r = await api('admin.stock'); STOCK = r.items; STOCK_META = { groups: r.groups || [], units: r.units || [] }; } catch (e) { return fail(e); } }
   const attn = s => ['HẾT', 'SẮP HẾT', 'chưa có giá'].indexOf(s.status) >= 0 || s.status.indexOf('âm') === 0;
   const list = STOCK.filter(s => (stockFilter === 'all' ? true : stockFilter === 'attn' ? attn(s) : !s.lastCount && s.group !== 'Dụng cụ'))
     .filter(s => !stockQ || (s.name + ' ' + s.id).toLowerCase().indexOf(stockQ) >= 0);
@@ -445,12 +450,56 @@ async function renderStock(force){
     '<input class="inp" id="sq" placeholder="🔍 Tìm: bơ, socola…" value="' + esc(stockQ) + '" style="margin-bottom:10px">' +
     '<div class="chips">' + [['attn', 'Cần chú ý (' + STOCK.filter(attn).length + ')'], ['all', 'Tất cả'], ['nocount', 'Chưa cân']].map(c =>
       '<button class="chip' + (stockFilter === c[0] ? ' on' : '') + '" data-sf="' + c[0] + '">' + c[1] + '</button>').join('') + '</div>' +
-    (list.length ? list.map(s => '<div class="stock"><div><b>' + esc(s.name) + '</b><small>' + esc(s.id) + ' · ' +
+    '<p class="meta" style="margin:-4px 0 8px">Bấm vào món để sửa tên, quy cách, đơn vị, giá.</p>' +
+    (list.length ? list.map(s => '<div class="stock" data-ing="' + esc(s.id) + '" style="cursor:pointer"><div><b>' + esc(s.name) + '</b><small>' + esc(s.id) + ' · ' +
       (s.lastCount ? 'cân ' + esc(s.lastCount) : s.bought ? 'giá ngày ' + esc(s.bought) : 'chưa cân') + (s.reorder ? ' · mức mua ' + esc(s.reorder) : '') +
       '</small></div><div class="r"><b>' + esc(s.onHand || '0') + ' ' + esc(s.unit) + '</b><br>' + pill(s) + '</div></div>').join('')
       : '<div class="empty">' + (stockFilter === 'attn' ? 'Không có món nào hết hoặc sắp hết. 👍<br><span class="meta">Muốn được báo SẮP HẾT: điền "Mức cần mua" ở tab Nguyên liệu trên Sheet.</span>' : 'Không có món.') + '</div>');
   $('sq').oninput = e => { stockQ = e.target.value.trim().toLowerCase(); const pos = e.target.selectionStart; renderStock(); $('sq').focus(); $('sq').setSelectionRange(pos, pos); };
   $('main').querySelectorAll('[data-sf]').forEach(b => b.onclick = () => { stockFilter = b.dataset.sf; renderStock(); });
+  $('main').querySelectorAll('[data-ing]').forEach(d => d.onclick = () => openIng(d.dataset.ing));
+}
+
+// Sửa nguyên liệu: tap an item in Kho.
+let ING_CUR = null;
+function openIng(id, keep){
+  ING_CUR = STOCK.find(s => s.id === id); if (!ING_CUR) return;
+  const s = ING_CUR, opts = (l, v) => l.map(x => '<option' + (x === v ? ' selected' : '') + '>' + esc(x) + '</option>').join('');
+  $('iTitle').textContent = s.name; $('iSub').textContent = s.id + ' · tồn ' + (s.onHand || 0) + ' ' + s.unit;
+  $('iBody').innerHTML =
+    '<label class="l" style="margin-top:0">Tên</label><input class="inp" id="iName" value="' + esc(s.name) + '">' +
+    '<label class="l">Nhóm</label><select class="inp" id="iGroup">' + opts(STOCK_META.groups, s.group) + '</select>' +
+    '<div class="two"><div><label class="l">1 gói / bịch có</label><input class="inp" id="iPack" inputmode="decimal" value="' + esc(s.pack) + '"></div>' +
+    '<div><label class="l">Đơn vị</label><select class="inp" id="iUnit">' + opts(STOCK_META.units, s.unit) + '</select></div></div>' +
+    '<p class="meta" id="iHint"></p>' +
+    '<label class="l">Giá 1 gói (đ)</label><input class="inp" id="iPrice" inputmode="numeric" value="' + esc(s.priceRaw) + '">' +
+    '<label class="l">Nơi mua</label><input class="inp" id="iSup" value="' + esc(s.supplier) + '">' +
+    '<label class="l">Mức cần mua <span class="meta">(tồn dưới mức này → báo SẮP HẾT)</span></label><input class="inp" id="iReorder" inputmode="decimal" placeholder="để trống = không báo" value="' + esc(s.reorderRaw) + '">' +
+    '<label class="l">Ghi chú</label><textarea class="inp" id="iNote">' + esc(s.note) + '</textarea>' +
+    '<button class="btn" id="iSave">Lưu</button><div id="iMsg"></div>' +
+    '<p class="meta" style="margin-top:12px">Đổi quy cách / đơn vị thì giá mỗi g/ml/cái và tồn kho tự tính lại. Lịch sử mua và số cân cũ giữ nguyên.</p>';
+  const hint = () => { const p = num($('iPack').value), pr = num($('iPrice').value);
+    $('iHint').textContent = p > 0 ? '1 gói = ' + p + ' ' + $('iUnit').value + (pr ? ' → ' + vnd(pr / p) + ' / ' + $('iUnit').value : '') : ''; };
+  ['iPack', 'iPrice'].forEach(k => $(k).oninput = hint); $('iUnit').onchange = hint; hint();
+  $('iSave').onclick = saveIng;
+  if (!keep) openLayer('ingView');
+}
+async function saveIng(){
+  const s = ING_CUR, v = { name: $('iName').value.trim(), group: $('iGroup').value, pack: num($('iPack').value), unit: $('iUnit').value,
+    price: num($('iPrice').value), supplier: $('iSup').value.trim(), reorder: $('iReorder').value.trim() === '' ? '' : num($('iReorder').value), note: $('iNote').value.trim() };
+  const old = { name: s.name, group: s.group, pack: Number(s.pack), unit: s.unit, price: Number(s.priceRaw) || 0, supplier: s.supplier,
+    reorder: s.reorderRaw === '' ? '' : Number(s.reorderRaw), note: s.note };
+  const patch = {}; Object.keys(v).forEach(k => { if (v[k] !== old[k]) patch[k] = v[k]; });
+  if (!Object.keys(patch).length) { $('iMsg').innerHTML = '<div class="msg ok">Không có gì thay đổi.</div>'; return; }
+  const b = $('iSave'); b.disabled = true; b.innerHTML = '<span class="spin"></span> Đang lưu…';
+  try {
+    const r = await api('admin.saveIngredient', { id: s.id, patch });
+    const k = STOCK.findIndex(x => x.id === s.id); if (k >= 0 && r.item) STOCK[k] = r.item;
+    BUY = null; COUNT = null; RECIPES = null;
+    openIng(s.id, true);   // repaint with the saved values
+    $('iMsg').innerHTML = '<div class="msg ok">Đã lưu.</div>';
+    if (view === 'stock') renderStock();
+  } catch (e) { b.disabled = false; b.textContent = 'Lưu'; $('iMsg').innerHTML = '<div class="msg bad">' + esc(e.message) + '</div>'; }
 }
 
 // ---------------- Mua hàng ----------------
@@ -478,7 +527,7 @@ async function renderBuy(force){
     d.innerHTML = '<button class="x" type="button">×</button><div class="h">Món ' + n + '</div>' +
       '<div class="pick"><input class="inp ing" list="ings" placeholder="Gõ tên để tìm…"><div class="meta info" style="margin-top:4px"></div></div>' +
       '<div class="new" hidden><input class="inp nm" placeholder="Tên món mới"><div class="two" style="margin-top:8px"><select class="inp grp">' + opts(BUY.groups) +
-      '</select><div class="two"><input class="inp pk" inputmode="decimal" placeholder="1 gói ="><select class="inp un">' + opts(BUY.units) + '</select></div></div></div>' +
+      '</select><div class="two"><input class="inp pk" inputmode="decimal" placeholder="1 gói ="><select class="inp un"><option value="">Đơn vị…</option>' + opts(BUY.units) + '</select></div></div></div>' +
       '<label style="display:flex;gap:8px;align-items:center;margin-top:8px;font-size:13.5px"><input type="checkbox" class="isnew"> Món mới (chưa có trong danh sách)</label>' +
       '<div class="two"><div><label class="l">Số gói</label><input class="inp q" inputmode="decimal" value="1"></div><div><label class="l">Giá 1 gói</label><input class="inp p" inputmode="numeric"></div></div>';
     $('bLines').appendChild(d);
