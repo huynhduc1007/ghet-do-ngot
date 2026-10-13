@@ -70,7 +70,8 @@
   .two>*{min-width:0}
   .inp{min-width:0;max-width:100%}
   /* iOS Safari keeps a date input at its own minimum width (it spilled over the next field) unless its native look is off */
-  input[type=date].inp{-webkit-appearance:none;appearance:none;display:block;min-height:46px;text-align:left}
+  input[type=date].inp{-webkit-appearance:none;appearance:none;display:block;width:100%;height:46px;text-align:left}
+  .inp:not(textarea){height:46px}
   input[type=date].inp::-webkit-date-and-time-value{text-align:left}
   .btn{display:block;width:100%;background:var(--ac);color:#fff;text-align:center;font-weight:700;padding:13px;border-radius:12px;font-size:15px;border:none;margin-top:10px;cursor:pointer;text-decoration:none}
   .btn.g{background:#fff;color:var(--acd);border:1px solid var(--ac)}
@@ -459,8 +460,8 @@ async function renderBuy(force){
   if (!BUY || force) { loading(); try { BUY = await api('admin.purchaseForm'); } catch (e) { return fail(e); } }
   const opts = l => l.map(x => '<option>' + esc(x) + '</option>').join('');
   $('main').innerHTML =
-    '<div class="two"><div><label class="l" style="margin-top:0">Ngày</label><input class="inp" type="date" id="bDate" value="' + BUY.today + '"></div>' +
-    '<div><label class="l" style="margin-top:0">Nơi mua</label><input class="inp" id="bSup" list="sups" placeholder="Phương Hà…"></div></div>' +
+    '<label class="l" style="margin-top:0">Ngày mua</label><input class="inp" type="date" id="bDate" value="' + BUY.today + '">' +
+    '<label class="l">Nơi mua</label><input class="inp" id="bSup" list="sups" placeholder="Phương Hà…">' +
     '<label class="l">Số hóa đơn / ghi chú</label><input class="inp" id="bInv" placeholder="không bắt buộc">' +
     '<div id="bLines" style="margin-top:12px"></div><button class="addline" id="bAdd">+ Thêm món</button>' +
     '<label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-size:14px"><input type="checkbox" id="bUpd" checked> Cập nhật giá mới vào Nguyên liệu</label>' +
@@ -515,8 +516,8 @@ async function renderCount(force){
   const groups = {}, order = [];
   COUNT.items.forEach(it => { if (!groups[it.group]) { groups[it.group] = []; order.push(it.group); } groups[it.group].push(it); });
   $('main').innerHTML =
-    '<div class="two"><div><label class="l" style="margin-top:0">Ngày cân</label><input class="inp" type="date" id="cDate" value="' + COUNT.today + '"></div>' +
-    '<div><label class="l" style="margin-top:0">Tìm món</label><input class="inp" id="cq" placeholder="bơ, socola…"></div></div>' +
+    '<label class="l" style="margin-top:0">Ngày cân</label><input class="inp" type="date" id="cDate" value="' + COUNT.today + '">' +
+    '<label class="l">Tìm món</label><input class="inp" id="cq" placeholder="bơ, socola…">' +
     '<p class="meta">Gõ số còn lại (cộng mọi gói đang mở) cạnh món đã cân. Món không cân thì để trống.</p>' +
     order.map(g => '<div class="grp"><div class="h" style="margin-top:12px">' + esc(g) + '</div>' + groups[g].map(it =>
       '<div class="stock" data-k="' + esc((it.name + ' ' + it.id).toLowerCase()) + '"><div><b>' + esc(it.name) + '</b><small>đang tính ' + esc(it.onHand || 0) + ' ' + esc(it.unit) +
