@@ -90,6 +90,13 @@
   .line{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px 12px;margin-bottom:10px;position:relative}
   .line .x{position:absolute;top:6px;right:8px;border:none;background:none;font-size:20px;color:var(--warn);cursor:pointer}
   .addline{width:100%;border:1px dashed var(--ac);border-radius:12px;padding:11px;background:none;color:var(--acd);font-weight:700;cursor:pointer}
+  .rl{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid var(--line);cursor:pointer}
+  .rl:last-child{border-bottom:none}
+  .rl .q{font-weight:700;font-size:16px;white-space:nowrap;text-align:right}
+  .rl small{display:block;font-size:12px;color:var(--soft);font-weight:400}
+  .rl.short small.k{color:var(--warn);font-weight:700}
+  .rl.done{opacity:.4}.rl.done .nmi{text-decoration:line-through}
+  .chip.off{color:var(--soft);border-style:dashed}
   .overlay{position:fixed;inset:0;background:var(--bg);z-index:20;display:flex;flex-direction:column;max-width:640px;margin:0 auto}
   .cardimg{display:block;width:100%;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.15);background:#fff;-webkit-touch-callout:default}
   .login{max-width:420px;margin:12vh auto 0;padding:24px;text-align:center}
@@ -125,6 +132,7 @@
     <button data-v="stock"><b>📦</b>Kho</button>
     <button data-v="buy"><b>🛒</b>Mua</button>
     <button data-v="count"><b>⚖️</b>Cân</button>
+    <button data-v="recipes"><b>📖</b>Công thức</button>
     <button data-v="profit"><b>📈</b>Lãi</button>
   </nav>
 </div>
@@ -210,8 +218,8 @@ function signOut(message){
 
 // ---------------- app shell ----------------
 let view = 'orders', timer = 0;
-const VIEWS = { orders: renderOrders, stock: renderStock, buy: renderBuy, count: renderCount, profit: renderProfit };
-const TITLES = { orders: 'Đơn hàng', stock: 'Kho nguyên liệu', buy: 'Nhập hóa đơn mua hàng', count: 'Nhập số cân', profit: 'Lãi & hòa vốn' };
+const VIEWS = { orders: renderOrders, stock: renderStock, buy: renderBuy, count: renderCount, recipes: renderRecipes, profit: renderProfit };
+const TITLES = { orders: 'Đơn hàng', stock: 'Kho nguyên liệu', buy: 'Nhập hóa đơn mua hàng', count: 'Nhập số cân', recipes: 'Thẻ công thức', profit: 'Lãi & hòa vốn' };
 
 function start(){
   $('loginView').hidden = true; $('app').hidden = false;
@@ -526,6 +534,72 @@ async function renderCount(force){
       $('cMsg').innerHTML = '<div class="msg ok">Đã lưu ' + r.saved + ' món. Tồn kho đã cập nhật.</div>';
     } catch (e) { b.disabled = false; upd(); $('cMsg').innerHTML = '<div class="msg bad">' + esc(e.message) + '</div>'; }
   };
+}
+
+// ---------------- Thẻ công thức ----------------
+let RECIPES = null, recId = store.get('gdn.recipe', ''), recScale = { k: 1, pieces: 0 }, recDone = {};
+const shortName = r => r.nameVn.replace(/^Bánh Quy /, '').replace(/^Bánh /, '');
+const fq = x => { const m = x >= 100 ? 1 : x >= 10 ? 10 : 100; return (Math.round(x * m) / m).toLocaleString('vi-VN'); };
+async function renderRecipes(force){
+  if (!RECIPES || force) {
+    loading();
+    try {
+      const [r, o] = await Promise.all([api('admin.recipes'), ORDERS.length && !force ? null : api('admin.orders')]);
+      RECIPES = r.recipes.sort((a, b) => (a.status !== 'Đang bán') - (b.status !== 'Đang bán') || a.id.localeCompare(b.id));
+      if (o) { ORDERS = o.orders; TODAY = o.today; if (seenIds() === null) store.set('gdn.seen', ORDERS.map(x => x.id)); updateBadge(); }
+    } catch (e) { return fail(e); }
+  }
+  if (!RECIPES.length) { $('main').innerHTML = '<div class="empty">Chưa có công thức nào trong tab Sản phẩm.</div>'; return; }
+  const r = RECIPES.find(x => x.id === recId) || RECIPES[0];
+  recId = r.id;
+  const k = recScale.pieces && r.yield ? recScale.pieces / r.yield : recScale.k;
+  // Upcoming orders that need this product, by delivery day (pieces, so a mini bag counts 10).
+  const need = {};
+  if (r.menuId) ORDERS.filter(o => open(o) && o.status !== 'Đã giao' && o.date >= TODAY).forEach(o => o.lines.forEach(l => {
+    if (l.id === r.menuId) need[o.date] = (need[o.date] || 0) + l.qty * r.perUnit;
+  }));
+  const days = Object.keys(need).sort().slice(0, 4);
+  const allDays = days.reduce((s, d) => s + need[d], 0);
+  const cost = r.lines.reduce((s, l) => s + l.cost, 0) * k;
+  const seg = (attr, val, on, text) => '<button ' + attr + '="' + val + '" class="' + (on ? 'on' : '') + '">' + text + '</button>';
+  $('main').innerHTML =
+    '<div class="chips">' + RECIPES.map(x => '<button class="chip' + (x.id === r.id ? ' on' : '') + (x.status !== 'Đang bán' ? ' off' : '') +
+      '" data-r="' + x.id + '">' + esc(shortName(x)) + '</button>').join('') + '</div>' +
+    '<div class="box"><div class="nm" style="font-size:18px;margin:0">' + esc(r.nameVn) + '</div>' +
+      '<div class="meta">' + esc(r.id) + ' · ' + esc(r.name) + (r.status !== 'Đang bán' ? ' · ' + esc(r.status) : '') +
+      (r.yield ? ' · 1 mẻ ra <b>' + fq(r.yield) + ' cái</b>' : '') + '</div>' +
+      (r.notes ? '<div class="meta" style="margin-top:6px;color:var(--ink)">' + esc(r.notes) + '</div>' : '') + '</div>' +
+    (r.lines.length ? '<div class="box"><div class="h">Làm bao nhiêu</div>' +
+      '<div class="seg">' + [0.5, 1, 2, 3].map(v => seg('data-k', v, !recScale.pieces && recScale.k === v, (v === 0.5 ? '½' : v) + ' mẻ')).join('') + '</div>' +
+      '<div class="row" style="margin-top:10px"><span style="font-size:14px">hoặc số cái</span>' +
+        '<input class="inp" id="rPieces" inputmode="decimal" placeholder="vd 5" value="' + (recScale.pieces || '') + '" style="width:110px;text-align:right"></div>' +
+      (days.length ? '<div class="meta" style="margin:10px 0 6px">Đơn sắp tới cần:</div><div class="seg">' +
+        days.map(d => seg('data-p', need[d], recScale.pieces === need[d], dlabel(d) + ' · ' + fq(need[d]) + ' cái')).join('') +
+        (days.length > 1 ? seg('data-p', allDays, recScale.pieces === allDays, 'Cả ' + days.length + ' ngày · ' + fq(allDays)) : '') + '</div>' : '') +
+      '<div class="meta" style="margin-top:10px">= <b>' + fq(k) + ' mẻ</b>' + (r.yield ? ' · ra khoảng <b>' + fq(r.yield * k) + ' cái</b>' : '') + '</div></div>' +
+      '<div class="box"><div class="row"><div class="h" style="margin:0">Nguyên liệu</div><span class="meta">bấm để gạch khi đã cân</span></div>' +
+      r.lines.map((l, i) => {
+        const q = l.qty * k, short = l.counted && l.onHand !== null && l.onHand < q;
+        return '<div class="rl' + (short ? ' short' : '') + (recDone[r.id + i] ? ' done' : '') + '" data-i="' + i + '"><div class="nmi">' + esc(l.name) +
+          (l.note ? '<small>' + esc(l.note) + '</small>' : '') + '</div><div class="q">' + fq(q) + ' ' + esc(l.unit) +
+          (l.onHand === null ? '' : l.counted ? '<small class="k">kho ' + fq(l.onHand) + (short ? ' · thiếu' : '') + '</small>'
+            : '<small>' + (l.onHand > 0 ? 'đã mua ' + fq(l.onHand) + ', ' : '') + 'chưa cân</small>') + '</div></div>';
+      }).join('') + '</div>'
+      : '<div class="box"><div class="meta">Món này không có công thức riêng (xem ghi chú ở trên).</div></div>') +
+    '<div class="box"><div class="h">Chi phí</div>' +
+      (r.lines.length ? '<div class="sumrow"><span>Nguyên liệu (' + fq(k) + ' mẻ)</span><b>' + vnd(cost) + '</b></div>' : '') +
+      (r.cogs ? '<div class="sumrow"><span>Giá vốn / ' + esc(r.unit || 'cái') + '</span><b>' + vnd(r.cogs) + '</b></div>' : '') +
+      (r.price ? '<div class="sumrow"><span>Giá bán</span><b>' + vnd(r.price) + '</b></div>' +
+        '<div class="sumrow t"><span>Biên lãi gộp</span><b style="color:var(--ok)">' + (r.margin === null ? '—' : Math.round(r.margin * 1000) / 10 + '%') + '</b></div>'
+        : '<div class="meta">Chưa có giá bán.</div>') + '</div>' +
+    '<p class="meta">Sửa công thức ở tab Công thức trên Sheet, rồi bấm ↻ để tải lại.</p>';
+  const m = $('main');
+  m.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { recId = b.dataset.r; store.set('gdn.recipe', recId); recScale = { k: 1, pieces: 0 }; m.scrollTop = 0; renderRecipes(); });
+  m.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { recScale = { k: Number(b.dataset.k), pieces: 0 }; renderRecipes(); });
+  m.querySelectorAll('[data-p]').forEach(b => b.onclick = () => { recScale = { k: 1, pieces: Number(b.dataset.p) }; renderRecipes(); });
+  m.querySelectorAll('.rl').forEach(d => d.onclick = () => { const key = r.id + d.dataset.i; recDone[key] = !recDone[key]; d.classList.toggle('done', recDone[key]); });
+  const pi = $('rPieces');
+  if (pi) pi.onchange = () => { const v = num(pi.value); recScale = { k: 1, pieces: v > 0 ? v : 0 }; renderRecipes(); };
 }
 
 // ---------------- Lãi ----------------
