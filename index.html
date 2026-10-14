@@ -123,7 +123,7 @@
   .code-row input{flex:1; min-width:0; text-transform:uppercase;}
   .code-row button{flex:none; padding:0 16px; border-radius:12px; border:1px solid var(--accent); background:var(--sheet); color:var(--accent-dark); font:inherit; font-weight:700; cursor:pointer;}
   .code-row button:disabled{opacity:.5; cursor:default;}
-  .sugg{font:inherit; color:var(--accent); background:none; border:none; padding:0; text-decoration:underline; cursor:pointer; font-weight:700;}
+  .sugg{font:inherit; color:var(--accent); background:#FFF4E8; border:1px solid var(--accent); border-radius:999px; padding:4px 10px; margin:2px 0; cursor:pointer; font-weight:700; touch-action:manipulation;}
 
   .seg{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
   .chips{display:flex; flex-wrap:wrap; gap:8px;}
@@ -721,7 +721,8 @@
     const unfinished = st.s === 'typing' || (st.s === 'empty' && required);
     const bad = st.s === 'bad' || (final && unfinished);
     $(liveId).className = 'live' + (st.s === 'ok' ? ' ok' : bad ? ' bad' : '');
-    $(liveId).innerHTML = bad && unfinished ? st.short : st.msg;
+    // Keep a suggestion tappable after the field loses focus (a tap on it blurs the field first).
+    $(liveId).innerHTML = bad && unfinished ? st.short + (st.msg.indexOf('class="sugg"') >= 0 ? ' · ' + st.msg : '') : st.msg;
     $(fieldId).classList.toggle('invalid', bad);
   }
   const checkPhone = final => showLive('f-phone', 'phoneLive', phoneState($('phone').value), final, radio('who') === 'external');
@@ -730,11 +731,17 @@
   $('phone').addEventListener('blur', () => checkPhone(true));
   $('email').addEventListener('input', () => checkEmail(false));
   $('email').addEventListener('blur', () => checkEmail(true));
-  $('emailLive').addEventListener('click', e => {
-    if (!e.target.matches('.sugg')) return;
-    $('email').value = e.target.dataset.v;
+  // pointerdown: act before the tap blurs the email field and re-renders this line.
+  const pickEmail = e => {
+    const b = e.target.closest('.sugg');
+    if (!b) return;
+    e.preventDefault();
+    $('email').value = b.dataset.v;
+    $('email').blur();
     checkEmail(true);
-  });
+  };
+  $('emailLive').addEventListener('pointerdown', pickEmail);
+  $('emailLive').addEventListener('click', pickEmail);   // keyboard / older browsers
 
   function validate(){
     const who = radio('who'), place = radio('delivery');
