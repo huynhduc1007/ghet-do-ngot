@@ -413,16 +413,22 @@ async function openCard(id){
   try {
     await fontsReady;
     const d = (await api('admin.confirmData', { id })).data;
-    const canvas = drawCard(d), url = canvas.toDataURL('image/png'), MSG = cardMessage(d);
+    const canvas = drawCard(d), MSG = cardMessage(d);
     const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+    const url = URL.createObjectURL(blob);   // a blob image can be long-pressed → Lưu vào Ảnh on iOS; a data: URL often cannot
     const file = new File([blob], d.id + '.png', { type: 'image/png' });
     const canShare = !!(navigator.canShare && navigator.canShare({ files: [file] }));
     $('cBody').innerHTML = '<img class="cardimg" id="cardImg" alt="Phiếu xác nhận" src="' + url + '">' +
       (canShare ? '<button class="btn" id="shareBtn">📤 Chia sẻ ảnh (Zalo, Seatalk…)</button>' : '') +
-      '<div class="two"><a class="btn g" download="' + d.id + '.png" href="' + url + '">💾 Lưu ảnh</a><button class="btn g" id="copyMsg">📋 Copy tin nhắn</button></div>' +
+      '<div class="two"><button class="btn g" id="saveImg">💾 Lưu ảnh</button><button class="btn g" id="copyMsg">📋 Copy tin nhắn</button></div>' +
       '<button class="btn" id="doneBtn" style="background:var(--ok)">✓ Đã gửi → Đã xác nhận</button>' +
-      '<p class="meta" style="text-align:center;margin-top:10px">Hoặc nhấn giữ ảnh → Chia sẻ / Lưu.</p>';
+      '<p class="meta" style="text-align:center;margin-top:10px">Hoặc nhấn giữ ảnh → Lưu vào Ảnh.</p>';
     if (canShare) $('shareBtn').onclick = () => navigator.share({ files: [file], title: 'Phiếu ' + d.id }).catch(() => {});
+    // iOS home-screen apps ignore <a download>; the share sheet has "Lưu hình ảnh".
+    $('saveImg').onclick = () => {
+      if (canShare) { toast('Chọn "Lưu hình ảnh" trong bảng chia sẻ'); navigator.share({ files: [file] }).catch(() => {}); return; }
+      const a = document.createElement('a'); a.href = url; a.download = d.id + '.png'; document.body.appendChild(a); a.click(); a.remove();
+    };
     $('copyMsg').onclick = () => copyText(MSG, 'Đã copy tin nhắn');
     $('doneBtn').onclick = async () => {
       $('doneBtn').disabled = true;
