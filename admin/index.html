@@ -593,7 +593,8 @@ async function renderBuy(force){
       const r = await api('admin.scanReceipt', { image: img.b64, mime: 'image/jpeg' });
       receiptUrl = r.url || '';
       const thumb = '<img src="' + img.url + '" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:8px;float:left;margin-right:10px">';
-      const saved = receiptUrl ? ' <a href="' + esc(receiptUrl) + '" target="_blank" rel="noopener">Xem ảnh trên Drive</a>' : '';
+      const saved = (receiptUrl ? ' <a href="' + esc(receiptUrl) + '" target="_blank" rel="noopener">Xem ảnh trên Drive</a>' : '') +
+        (r.folderUrl ? ' · <a href="' + esc(r.folderUrl) + '" target="_blank" rel="noopener">Mở thư mục hóa đơn</a>' : '');
       if (!r.scan) { box.innerHTML = thumb + '<b>Ảnh đã lưu.</b>' + saved + '<br><span style="color:var(--warn)">' + esc(r.error || 'Không đọc được.') + '</span><div style="clear:both"></div>'; return; }
       const sc = r.scan;
       if (sc.date) $('bDate').value = sc.date;
