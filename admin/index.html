@@ -133,6 +133,7 @@
     <button class="icon-btn" id="menuBtn" aria-label="Tài khoản">☰</button>
   </header>
   <main id="main"></main>
+  <main id="buyMain" hidden></main>
   <nav class="nav" id="nav">
     <button data-v="orders" class="on"><b>🧾</b>Đơn<span class="badge" id="newBadge" hidden></span></button>
     <button data-v="stock"><b>📦</b>Kho</button>
@@ -242,7 +243,8 @@ function go(v){
   view = VIEWS[v] ? v : 'orders'; store.set('gdn.view', view);
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.v === view));
   $('sub').textContent = TITLES[view];
-  $('main').scrollTop = 0;
+  $('main').hidden = view === 'buy'; $('buyMain').hidden = view !== 'buy';
+  if (view !== 'buy') $('main').scrollTop = 0;
   VIEWS[view]();
 }
 $('nav').addEventListener('click', e => { const b = e.target.closest('button[data-v]'); if (b) go(b.dataset.v); });
@@ -527,12 +529,19 @@ function shrinkPhoto(file, maxSide){
     img.src = src;
   });
 }
+let buyDrawn = false;
 async function renderBuy(force){
-  if (!BUY || force) { loading(); try { BUY = await api('admin.purchaseForm'); } catch (e) { return fail(e); } }
+  const box = $('buyMain');
+  if (buyDrawn && !force && BUY) return;   // keep what is typed / being scanned
+  if (!BUY || force) {
+    box.innerHTML = '<div class="empty"><span class="spin"></span> Đang tải…</div>';
+    try { BUY = await api('admin.purchaseForm'); } catch (e) { box.innerHTML = '<div class="msg bad">' + esc(e.message) + '</div>'; return; }
+  }
+  buyDrawn = true;
   const opts = l => l.map(x => '<option>' + esc(x) + '</option>').join('');
-  $('main').innerHTML =
+  box.innerHTML =
     '<div class="box" id="bScanBox"><label class="btn" style="margin-top:0;cursor:pointer">📷 Chụp / chọn ảnh hóa đơn<input type="file" id="bPhoto" accept="image/*" hidden></label>' +
-      '<div class="meta" id="bScan" style="margin-top:8px">App đọc hóa đơn và điền sẵn bên dưới. Ảnh được lưu vào Google Drive.</div></div>' +
+      '<div class="meta" id="bScan" style="margin-top:8px">App đọc hóa đơn và điền sẵn bên dưới. Ảnh chỉ lưu vào Google Drive khi bạn bấm Lưu hóa đơn.</div></div>' +
     '<label class="l" style="margin-top:0">Ngày mua</label><input class="inp" type="date" id="bDate" value="' + BUY.today + '">' +
     '<label class="l">Nơi mua</label><input class="inp" id="bSup" list="sups" placeholder="Phương Hà…">' +
     '<label class="l">Số hóa đơn / ghi chú</label><input class="inp" id="bInv" placeholder="không bắt buộc">' +
@@ -564,7 +573,7 @@ async function renderBuy(force){
     return d;
   };
   $('bAdd').onclick = () => add(); add();
-  let receiptUrl = '';
+  let receiptImage = '';   // JPEG base64, sent with the save (Lưu hóa đơn)
   // One scanned line → one form line: a known ingredient, or a ticked "Món mới" with what Gemini guessed.
   const fillLine = (d, l) => {
     const it = l.ingId && BUY.items.find(x => x.id === l.ingId), info = d.querySelector('.info');
@@ -581,21 +590,23 @@ async function renderBuy(force){
     d.querySelector('.p').value = l.price || '';
     if (l.unsure) { d.style.borderColor = 'var(--warn)'; d.querySelector('.h').innerHTML += ' <span class="pill p-bad">kiểm tra lại</span>'; }
   };
+  const dropBtn = () => { const b = $('bDropPhoto'); if (b) b.onclick = () => { receiptImage = ''; $('bScan').innerHTML = 'Đã bỏ ảnh (form vẫn giữ nguyên).'; }; };
   $('bPhoto').onchange = async e => {
     const f = e.target.files && e.target.files[0]; e.target.value = '';
     if (!f) return;
-    const box = $('bScan');
+    const box = $('bScan');   // status line under the camera button
     box.innerHTML = '<span class="spin"></span> Đang thu nhỏ ảnh…';
     try {
       const img = await shrinkPhoto(f, 1600);
       box.innerHTML = '<img src="' + img.url + '" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:8px;float:left;margin-right:10px">' +
         '<span class="spin"></span> Đang đọc hóa đơn (10–30 giây)…<div style="clear:both"></div>';
+      receiptImage = img.b64;
       const r = await api('admin.scanReceipt', { image: img.b64, mime: 'image/jpeg' });
-      receiptUrl = r.url || '';
+      if (view !== 'buy') toast('Đã đọc xong hóa đơn, mở tab Mua để xem');
       const thumb = '<img src="' + img.url + '" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:8px;float:left;margin-right:10px">';
-      const saved = (receiptUrl ? ' <a href="' + esc(receiptUrl) + '" target="_blank" rel="noopener">Xem ảnh trên Drive</a>' : '') +
-        (r.folderUrl ? ' · <a href="' + esc(r.folderUrl) + '" target="_blank" rel="noopener">Mở thư mục hóa đơn</a>' : '');
-      if (!r.scan) { box.innerHTML = thumb + '<b>Ảnh đã lưu.</b>' + saved + '<br><span style="color:var(--warn)">' + esc(r.error || 'Không đọc được.') + '</span><div style="clear:both"></div>'; return; }
+      const saved = ' <button type="button" class="chip" id="bDropPhoto" style="padding:3px 10px">Bỏ ảnh</button>';
+      const keepNote = '<br><span class="meta">Ảnh sẽ lưu vào Drive khi bấm Lưu hóa đơn.</span>';
+      if (!r.scan) { box.innerHTML = thumb + '<b>Chưa đọc được hóa đơn.</b>' + saved + '<br><span style="color:var(--warn)">' + esc(r.error || 'Không đọc được.') + '</span>' + keepNote + '<div style="clear:both"></div>'; dropBtn(); return; }
       const sc = r.scan;
       if (sc.date) $('bDate').value = sc.date;
       if (sc.supplier) $('bSup').value = sc.supplier;
@@ -606,8 +617,9 @@ async function renderBuy(force){
       box.innerHTML = thumb + '<b>Đã đọc ' + sc.lines.length + ' món.</b>' + saved +
         (sc.total ? '<br>Tổng trên hóa đơn ' + vnd(sc.total) + (Math.abs(sc.total - sum) > 1000 ? ' · <span style="color:var(--warn)">các dòng cộng lại ' + vnd(sum) + ', kiểm tra lại</span>' : ' ✓') : '') +
         (unsure ? '<br><span style="color:var(--warn)">' + unsure + ' món viền đỏ cần kiểm tra lại.</span>' : '') +
-        '<br>Xem lại từng món rồi bấm Lưu hóa đơn.<div style="clear:both"></div>';
-    } catch (err) { box.innerHTML = '<span style="color:var(--warn)">' + esc(err.message) + '</span>'; }
+        '<br>Xem lại từng món rồi bấm Lưu hóa đơn.' + keepNote + '<div style="clear:both"></div>';
+      dropBtn();
+    } catch (err) { receiptImage = ''; box.innerHTML = '<span style="color:var(--warn)">' + esc(err.message) + '</span>'; }
   };
   $('bSave').onclick = async () => {
     const lines = [];
@@ -621,9 +633,12 @@ async function renderBuy(force){
     } catch (e) { $('bMsg').innerHTML = '<div class="msg bad">' + esc(e.message) + '</div>'; return; }
     const b = $('bSave'); b.disabled = true; b.innerHTML = '<span class="spin"></span> Đang lưu…';
     try {
-      const r = await api('admin.savePurchase', { form: { date: $('bDate').value, supplier: $('bSup').value, invoice: $('bInv').value, updatePrices: $('bUpd').checked, lines, receiptUrl } });
+      if (receiptImage) b.innerHTML = '<span class="spin"></span> Đang lưu (kèm ảnh)…';
+      const r = await api('admin.savePurchase', { form: { date: $('bDate').value, supplier: $('bSup').value, invoice: $('bInv').value, updatePrices: $('bUpd').checked, lines, receiptImage } });
       BUY = null; STOCK = null; await renderBuy();
-      $('bMsg').innerHTML = '<div class="msg ok">Đã lưu ' + r.saved + ' dòng, tổng ' + vnd(r.total) + (r.added.length ? '. Món mới: ' + esc(r.added.join(', ')) : '') + '.</div>';
+      $('bMsg').innerHTML = '<div class="msg ok">Đã lưu ' + r.saved + ' dòng, tổng ' + vnd(r.total) + (r.added.length ? '. Món mới: ' + esc(r.added.join(', ')) : '') + '.' +
+        (r.receiptUrl ? '<br>Ảnh hóa đơn: <a href="' + esc(r.receiptUrl) + '" target="_blank" rel="noopener">xem trên Drive</a>' +
+          (r.folderUrl ? ' · <a href="' + esc(r.folderUrl) + '" target="_blank" rel="noopener">mở thư mục</a>' : '') : '') + '</div>';
     } catch (e) { b.disabled = false; b.textContent = 'Lưu hóa đơn'; $('bMsg').innerHTML = '<div class="msg bad">' + esc(e.message) + '</div>'; }
   };
 }
