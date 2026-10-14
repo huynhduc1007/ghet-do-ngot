@@ -373,9 +373,9 @@
     },
   };
 
-  const MENU = [FEATURED, ...ITEMS].map(i => ({
+  const MENU = [...ITEMS, FEATURED].map(i => ({
     id: i.id, name: i.name, nameVn: i.nameVn, price: i.price, img: i.img, hint: i.orderHint,
-    unit: i.unit || 'bag of 10', isNew: i === FEATURED, desc: i.desc, weight: i.weight || i.meta,
+    unit: i.unit || 'bag of 10', badge: i.badge, desc: i.desc, weight: i.weight || i.meta,
     notePh: i.notePlaceholder,   // items that take a per-item note (e.g. banana: chips → nuts)
   }));
   const cart = Object.fromEntries(MENU.map(i => [i.id, 0]));
@@ -404,10 +404,10 @@
       value="${esc(notes[i.id])}" placeholder="${esc(i.notePh)}" aria-label="Ghi chú cho ${esc(i.nameVn)}">`;
 
   $('items').innerHTML = MENU.map(i => `
-    <div class="item${i.isNew ? ' featured' : ''}" id="item-${i.id}">
+    <div class="item" id="item-${i.id}">
       <button type="button" class="zoom-btn" data-zoom="${i.id}" aria-label="Xem ảnh lớn ${i.nameVn}"><img src="${i.img}" alt=""></button>
       <div class="info">
-        <div class="nm">${i.nameVn}${i.isNew ? '<span class="tag">Mới</span>' : ''}</div>
+        <div class="nm">${i.nameVn}${i.badge ? `<span class="tag">${esc(i.badge)}</span>` : ''}</div>
         <div class="sub">${i.name}</div>
         ${i.hint ? `<div class="hint-item">${i.hint}</div>` : ''}
         <div class="row">

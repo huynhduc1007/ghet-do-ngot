@@ -27,7 +27,7 @@ const ITEMS = [
     unit:"piece",
     weight:"150g",
     img:"image/Banana_oat_bread-removebg-preview-cropped.png",
-    group:"bakes", badge:"Best seller",
+    group:"bakes",
     desc:"Ripe banana, rolled oats and dark chocolate chips, baked into a moist tea loaf. Nuts instead of chips on request.",
   },
   {
@@ -85,7 +85,6 @@ const FEATURED = {
   meta:"10 pieces · ~100g",
   pitch:"Every cookie flavour in one bag",
   img:"image/cookie-bag-illustration.png",
-  badge:"New",
   desc:"Ten bite-sized cookies in a mix of our flavours — made for snacking and sharing.",
 };
 
